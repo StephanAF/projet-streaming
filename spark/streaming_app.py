@@ -1,13 +1,22 @@
+import sys
+import time
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, window, count
 from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType
 
-# Créer la session Spark avec les bons packages
+print("🚀 Application Spark Streaming démarrée...")
+
+# Attendre que Kafka soit prêt
+time.sleep(10)
+
+# Créer la session Spark
 spark = SparkSession.builder \
     .appName("RealtimeWebLogs") \
+    .config("spark.master", "local[*]") \
     .config("spark.sql.streaming.checkpointLocation", "/tmp/checkpoint") \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0") \
     .getOrCreate()
+
+print("✅ Session Spark créée")
 
 # Schéma des logs JSON
 schema = StructType() \
@@ -17,16 +26,20 @@ schema = StructType() \
     .add("timestamp", DoubleType())
 
 # Lecture depuis Kafka
+print("📡 Connexion à Kafka...")
 df = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "kafka:9092") \
     .option("subscribe", "web_logs") \
     .option("startingOffsets", "latest") \
+    .option("failOnDataLoss", "false") \
     .load() \
     .selectExpr("CAST(value AS STRING) as json") \
     .select(from_json(col("json"), schema).alias("data")) \
     .select("data.*") \
     .withColumn("timestamp", col("timestamp").cast("timestamp"))
+
+print("✅ Flux Kafka configuré")
 
 # 1️⃣ Nombre de visites par page
 visits_by_page = df.groupBy("page").count()
@@ -42,19 +55,25 @@ query1 = visits_by_page.writeStream \
     .outputMode("complete") \
     .format("console") \
     .queryName("visits_by_page") \
+    .trigger(processingTime="5 seconds") \
     .start()
 
 query2 = errors_404.writeStream \
     .outputMode("complete") \
     .format("console") \
     .queryName("errors_404") \
+    .trigger(processingTime="5 seconds") \
     .start()
 
 query3 = active_users.writeStream \
     .outputMode("complete") \
     .format("console") \
     .queryName("active_users") \
+    .trigger(processingTime="5 seconds") \
     .start()
+
+print("📊 Requêtes streaming démarrées - Attente des données...")
+print("=" * 80)
 
 # Attendre la terminaison
 query1.awaitTermination()

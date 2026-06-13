@@ -2,22 +2,30 @@ import json
 import time
 import random
 from kafka import KafkaProducer
+import sys
+
+print("🚀 Producer Kafka démarré...")
 
 # Attendre que Kafka soit prêt
-time.sleep(10)
+time.sleep(15)
 
-producer = KafkaProducer(
-    bootstrap_servers='localhost:9092',
-    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-    api_version_auto_timeout_ms=30000
-)
+try:
+    producer = KafkaProducer(
+        bootstrap_servers='kafka:9092',
+        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+        api_version_auto_timeout_ms=30000,
+        request_timeout_ms=30000
+    )
+    print("✅ Connecté à Kafka avec succès!")
+except Exception as e:
+    print(f"❌ Erreur de connexion à Kafka: {e}")
+    sys.exit(1)
 
-users = ["alice", "bob", "charlie", "diana", "eve", "franck"]
-pages = ["home", "login", "profile", "dashboard", "about", "contact"]
-statuses = [200, 200, 200, 404, 500, 302]  # Plus de 200 pour simuler un vrai trafic
+users = ["alice", "bob", "charlie", "diana", "eve", "franck", "george", "helen"]
+pages = ["home", "login", "profile", "dashboard", "about", "contact", "products", "checkout"]
+statuses = [200, 200, 200, 200, 404, 500, 302, 200]
 
-print("🚀 Producer démarré - Envoi de logs vers Kafka...")
-
+count = 0
 while True:
     log = {
         "user": random.choice(users),
@@ -26,10 +34,11 @@ while True:
         "timestamp": time.time()
     }
     try:
-        producer.send("web_logs", log)
-        print(f"✅ Produit : {log}")
+        future = producer.send('web_logs', log)
+        record_metadata = future.get(timeout=10)
+        count += 1
+        print(f"[{count}] ✅ Produit: {log}")
     except Exception as e:
-        print(f"❌ Erreur d'envoi : {e}")
+        print(f"❌ Erreur d'envoi: {e}")
     
-    time.sleep(random.uniform(0.5, 1.5))  # Temps variable entre 0.5 et 1.5 secondes
-    
+    time.sleep(random.uniform(0.5, 2))
